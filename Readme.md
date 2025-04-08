@@ -7,10 +7,18 @@ npm install bitquery-protobuf
 ```
 # Usage
 
+Create a javascript file, for example `test.js` and write the following code.
+
 ```js
 const {runProto} = require('bitquery-protobuf');
 
 runProto("<username>", "<password>", "topic");
+```
+
+Run this script using the following command line.
+
+```shell
+node test.js
 ```
 
 - \<username> & \<password>: The credentials to access the Bitquery Kafka stream. To get your credentials contact - sales@bitquery.io
@@ -23,7 +31,7 @@ To read more about Bitquery Kafka solutions checkout their official [documentati
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues and pull requests [here](https://github.com/Kshitij0O7/bitquery-protobuf).
+Contributions are welcome! Feel free to submit issues and pull requests [here](https://github.com/bitquery/bitquery-protobuf).
 
 License
 
