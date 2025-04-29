@@ -1,12 +1,32 @@
+// Import required modules
 const { Kafka } = require('kafkajs');
 const bs58 = require('bs58');
-const {loadProto} = require('bitquery-protobuf-schema');
-const { CompressionTypes, CompressionCodecs } = require("kafkajs");
-const LZ4 = require("kafkajs-lz4");
+const { loadProto } = require('bitquery-protobuf-schema');
+const { CompressionTypes, CompressionCodecs } = require('kafkajs');
+const LZ4 = require('kafkajs-lz4');
 const { v4: uuidv4 } = require('uuid');
-
+const config = require('./config.json');  //credentials imported from JSON file
+// Enable LZ4 compression
 CompressionCodecs[CompressionTypes.LZ4] = new LZ4().codec;
 
+// Configuration
+const username = config.solana_username; //credentials imported from JSON file
+const password = config.solana_password;
+const topic = 'solana.transactions.proto';
+const id = uuidv4();
+
+// Initialize Kafka Client (Non-SSL)
+const kafka = new Kafka({
+    clientId: username,
+    brokers: ['rpk0.bitquery.io:9092', 'rpk1.bitquery.io:9092', 'rpk2.bitquery.io:9092'],
+    sasl: {
+        mechanism: 'scram-sha-512',
+        username: username,
+        password: password,
+    },
+});
+
+// Function to convert bytes to base58
 const convertBytes = (buffer, encoding = 'base58') => {
     if (encoding === 'base58') {
         return bs58.default.encode(buffer);
@@ -14,6 +34,7 @@ const convertBytes = (buffer, encoding = 'base58') => {
     return buffer.toString('hex');
 }
 
+// Recursive function to print Protobuf messages
 const printProtobufMessage = (msg, indent = 0, encoding = 'base58') => {
     const prefix = ' '.repeat(indent);
     for (const [key, value] of Object.entries(msg)) {
@@ -38,46 +59,34 @@ const printProtobufMessage = (msg, indent = 0, encoding = 'base58') => {
     }
 }
 
-const run = async (consumer, topic) => {
-    let ParsedIdlBlockMessage = await loadProto(topic); // Load proto before starting Kafka
-    await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: false });
+// Initialize consumer
+const consumer = kafka.consumer({ groupId: `${username}-${id}` });
 
-    await consumer.run({
-        autoCommit: false,
-        eachMessage: async ({ partition, message }) => {
-            try {
-                const buffer = message.value;
-                const decoded = ParsedIdlBlockMessage.decode(buffer);
-                const msgObj = ParsedIdlBlockMessage.toObject(decoded, { bytes: Buffer });
-                printProtobufMessage(msgObj);
-            } catch (err) {
-                console.error('Error decoding Protobuf message:', err);
-            }
-        },
-    });
+// Run the consumer
+const run = async () => {
+    try {
+        const ParsedIdlBlockMessage = await loadProto(topic); // Load Protobuf schema
+        await consumer.connect();
+        await consumer.subscribe({ topic, fromBeginning: false });
+
+        await consumer.run({
+            autoCommit: false,
+            eachMessage: async ({ partition, message }) => {
+                try {
+                    const buffer = message.value;
+                    const decoded = ParsedIdlBlockMessage.decode(buffer);
+                    const msgObj = ParsedIdlBlockMessage.toObject(decoded, { bytes: Buffer });
+                    printProtobufMessage(msgObj);
+                } catch (err) {
+                    console.error('Error decoding Protobuf message:', err);
+                }
+            },
+        });
+
+    } catch (error) {
+        console.error('Error running consumer:', error);
+    }
 }
 
-const runProto = async (_username, _password, _topic) => {
-    const username = _username;
-    const password = _password
-    const topic = _topic;
-
-    const kafka = new Kafka({
-        clientId: username,
-        brokers: ['rpk0.bitquery.io:9092', 'rpk1.bitquery.io:9092', 'rpk2.bitquery.io:9092'],
-        sasl: {
-            mechanism: "scram-sha-512",
-            username: username,
-            password: password
-        }
-    });
-
-    let id = uuidv4();
-
-    const consumer = kafka.consumer({ groupId: username + id });
-
-    await run(consumer, topic);
-}
-
-module.exports = {runProto};
+// Start the consumer
+run().catch(console.error);
